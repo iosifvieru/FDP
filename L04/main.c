@@ -6,12 +6,32 @@
 #define ATTACK 0
 #define RETREAT 1
 
+typedef struct ByzantineMessage {
+    int maj;
+    int mult;
+} ByzantineMessage;
+
 void print_decisions(int* decisions, int size, int pid){
     printf("pid: %d: ", pid);
     for(int i = 0; i < size; i++){
         printf("decision[%d] = %d ", i, decisions[i]);
     }
     printf("\n");
+}
+
+ByzantineMessage compute_byzantine_message(int* decisions, int size){
+    ByzantineMessage message;
+    int maj[2] = {0, 0};
+    
+    for(int i = 0; i < size; i++){
+        int decision = decisions[i];
+        maj[decision]++;
+    }
+
+    message.maj = maj[0] > maj[1] ? ATTACK : RETREAT;
+    message.mult = maj[0] > maj[1] ? maj[0] : maj[1];
+
+    return message;
 }
 
 int main(int argc, char** argv){
@@ -60,12 +80,39 @@ int main(int argc, char** argv){
 
     decision_array[my_pid] = decision;
 
-    printf("pid: %d is_faulty: %d decision: %d\n", my_pid, is_faulty, decision);
-    
-    print_decisions(decision_array, world_size, my_pid);
-
     for(int k = 0; k <= no_faulty_generals; k++){
+        if(is_faulty == 1){
+            decision = (rand() % 100) > 50 ? ATTACK : RETREAT;
+        }
 
+        // send everybody to everybody. 
+        MPI_Allgather(&decision, 1, MPI_INT,  
+            decision_array, 1, MPI_INT, MPI_COMM_WORLD);
+
+        ByzantineMessage computed_message = compute_byzantine_message(decision_array, world_size);
+        // printf("pid: %d: decision: %d maj: %d mult: %d\n", my_pid, decision, computed_message.maj, computed_message.mult);
+
+        int king_maj = 0;
+        // round 2k+1
+        if(k == my_pid){
+            king_maj = computed_message.maj;
+            printf("I am the king and my maj is: %d\n", king_maj);
+        }
+
+        MPI_Bcast(&king_maj, 1, MPI_INT, k, MPI_COMM_WORLD);
+        // printf("I am pid: %d and king's mult is %d\n", my_pid, king_maj);
+
+        if(computed_message.mult > (world_size / 2) + no_faulty_generals){
+            decision = computed_message.maj;
+        } else {
+            decision = king_maj;
+        }
+    }
+
+    if(decision == ATTACK){
+        printf("pid: %d: my FINAL decision is ATTACK\n", my_pid);
+    } else {
+        printf("pid: %d: my FINAL decision is RETREAT\n", my_pid);
     }
 
     MPI_Finalize();
