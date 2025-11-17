@@ -51,11 +51,13 @@ int main(int argc, char** argv){
     MPI_Comm_rank(MPI_COMM_WORLD, &my_pid);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-    if(world_size < 4 * no_faulty_generals){
-        fprintf(stderr, "Error: world_size(%d) must be greater than 4 * faulty(%d).\n", world_size, no_faulty_generals);
-        MPI_Finalize();
-        exit(EXIT_FAILURE);
-    }
+    MPI_Request request[world_size];
+
+    // if(world_size < 4 * no_faulty_generals){
+    //     fprintf(stderr, "Error: world_size(%d) must be greater than 4 * faulty(%d).\n", world_size, no_faulty_generals);
+    //     MPI_Finalize();
+    //     exit(EXIT_FAILURE);
+    // }
 
     decision_array = (int*) malloc(world_size * sizeof(int));
     if(decision_array == NULL){
@@ -81,13 +83,28 @@ int main(int argc, char** argv){
     decision_array[my_pid] = decision;
 
     for(int k = 0; k <= no_faulty_generals; k++){
-        if(is_faulty == 1){
-            decision = (rand() % 100) > 50 ? ATTACK : RETREAT;
+        // // send everybody to everybody. 
+        // MPI_Allgather(&decision, 1, MPI_INT,  
+        //     decision_array, 1, MPI_INT, MPI_COMM_WORLD);
+
+        for(int i = 0; i < world_size; i++){
+            int decision_copy = decision;
+            if(is_faulty == 1 && i != my_pid){
+                decision_copy = rand() % 2;
+
+                // printf("pid: %d i am faulty and I send %d to %d\n", my_pid, decision_copy, i);
+            }
+
+            MPI_Isend(&decision_copy, 1, MPI_INT, i, 0, MPI_COMM_WORLD, &request[i]);
         }
 
-        // send everybody to everybody. 
-        MPI_Allgather(&decision, 1, MPI_INT,  
-            decision_array, 1, MPI_INT, MPI_COMM_WORLD);
+        for(int i = 0; i < world_size; i++){
+            MPI_Irecv(&decision_array[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &request[i]);
+        }
+
+        MPI_Waitall(world_size, request, MPI_STATUSES_IGNORE);
+
+        print_decisions(decision_array, world_size, my_pid);
 
         ByzantineMessage computed_message = compute_byzantine_message(decision_array, world_size);
         // printf("pid: %d: decision: %d maj: %d mult: %d\n", my_pid, decision, computed_message.maj, computed_message.mult);

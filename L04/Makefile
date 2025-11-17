@@ -2,7 +2,7 @@ all:
 	mpicc -Wall main.c -o main.out
 
 run:
-	mpirun -np 10 --oversubscribe main.out 2 6 0 
+	mpirun -np 8 --oversubscribe main.out 5 6 0 1 2 3  
 
 clean:
 	rm *.out
